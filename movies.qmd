@@ -1,0 +1,168 @@
+---
+title: "movies"
+format: html
+---
+
+## Setup
+```{r}
+library(tidyverse)
+library(vroom)
+
+library(progress)
+library(httr)
+library(jsonlite)
+
+readRenviron(".env")
+api_key <- Sys.getenv("api_key")
+
+base_url <- "https://mdblist.com/api/?"
+```
+
+Getting data from 
+
+[mdblist](mdblist.com)
+
+Limits
+```{r}
+# API endpoint for checking limits
+url <- "https://mdblist.com/api/user/?apikey=fbi8aymrfprksp7xxna0s28dw"
+
+# Make the GET request
+response <- GET(url)
+
+# Parse the JSON response
+limits <- fromJSON(rawToChar(response$content))
+
+# Print the limits
+print(limits)
+```
+
+
+## Example: Get info on jaws movie, IMDB id: tt0073195
+https://mdblist.com/api/?apikey=fbi8aymrfprksp7xxna0s28dw&i=tt0073195
+```{r}
+# Define the URL
+imdb_id <- "tt0073195"
+
+full_url <- paste0(base_url, "apikey=", api_key, "&i=", imdb_id)
+
+# Make the GET request
+response <- GET(full_url)
+
+# Parse the JSON response
+data <- fromJSON(rawToChar(response$content))
+
+# Print the data
+#print(data)
+
+# Get rating diffence
+data$ratings %>%
+  filter(source %in% c("tomatoes", "tomatoesaudience")) %>%
+  select(source, value) %>%
+  pivot_wider(names_from = source, values_from = value)
+
+# Get other attributes
+```
+
+## Get list of movies to check
+```{r}
+imdb_raw <- vroom("/Users/sebastiangeis/Downloads/title.basics.tsv", delim = "\t", na = "\\N") 
+imdb_ratings <- vroom("/Users/sebastiangeis/Downloads/title.ratings.tsv", delim = "\t", na = "\\N")
+
+imdb_filtered <- imdb_raw %>%
+  filter(titleType == "movie",
+         as.numeric(startYear) > 2000,
+         !is.na(runtimeMinutes)) %>%
+  left_join(imdb_ratings, by = "tconst") %>%
+  filter(numVotes > 10000) %>%
+  mutate(genres = str_split(genres, ",")) %>%
+  select(-endYear, -titleType, -isAdult)
+
+imdb_filtered
+```
+
+Save to .rds / read from .rds
+```{r}
+# write_rds(imdb_filtered, "./data/imdb_filtered.rds")
+
+imdb_filtered <- read_rds("./data/imdb_filtered.rds")
+```
+
+
+## API requests
+```{r}
+set.seed(1)
+imdb_tomatoes <- imdb_filtered %>%
+  mutate(tomatoes = -1,
+         tomatoesaudience = -1) %>%
+  slice_sample(n = 200)
+
+imdb_ids <- imdb_tomatoes %>% pull(tconst)
+
+# Setting up progress bar
+pb <- progress_bar$new(format = "(:spin) [:bar] :percent [Elapsed time: :elapsedfull || ETA: :eta]",
+                       total = length(imdb_ids),
+                       clear = FALSE)
+
+for(i in 1:length(imdb_ids)) {
+  pb$tick()
+  
+  id <- imdb_ids[i]
+  full_url <- paste0(base_url, "apikey=", api_key, "&i=", id)
+  
+  # Make the GET request
+  try(
+    response <- GET(full_url)
+  )
+  
+  # Parse the JSON response
+  data <- fromJSON(rawToChar(response$content))
+  
+  # Print the data
+  #print(data)
+  
+  # Get rating values
+  try({
+    imdb_tomatoes$tomatoes[i] <- data$ratings %>%
+      filter(source == "tomatoes") %>%
+      pull(value)
+    
+    imdb_tomatoes$tomatoesaudience[i] <- data$ratings %>%
+      filter(source == "tomatoesaudience") %>%
+      pull(value)
+  })
+
+}
+
+imdb_tomatoes
+```
+
+```{r}
+base_url <- "https://mdblist.com/api/?"
+api_key <- "fbi8aymrfprksp7xxna0s28dw"
+full_url <- paste0(base_url, "apikey=", api_key, "&i=", "tt0120737")
+
+# Make the GET request
+response <- GET(full_url)
+
+# Parse the JSON response
+data <- fromJSON(rawToChar(response$content))
+
+# Print the data
+print(data)
+
+data$ratings %>%
+    filter(source == "tomatoes") %>%
+    pull(value)
+
+data$ratings %>%
+    filter(source == "tomatoesaudience") %>%
+    pull(value)
+```
+
+## Analysis
+```{r}
+imdb_tomatoes %>%
+  mutate()
+```
+

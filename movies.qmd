@@ -159,68 +159,124 @@ converted_data <- response_list %>%
   map(~ .x %>%
         resp_body_raw() %>%
         rawToChar() %>%
-        fromJSON()) %>%
-  keep(~ .x$response == TRUE)
+        fromJSON())# %>%
+  #keep(~ .x$response == TRUE)
 
-converted_data
+#converted_data
+
+extract_rating <- possibly(function(x, filter_source) {
+  x$ratings %>%
+    filter(source == filter_source) %>%
+    pull(value)
+}, otherwise = NA)
+
+imdb_tomatoes$tomatoes <- map_dbl(converted_data, extract_rating, filter_source = "tomatoes")
+imdb_tomatoes$tomatoesaudience <- map_dbl(converted_data, extract_rating, filter_source = "tomatoesaudience")
 ```
-
 
 ```{r}
-responses[[1]]$content
-
-fromJSON(rawToChar(response_list[[1]]$content))$ratings
-
-response_list[[1]] %>%
-  resp_body_raw() %>%
-  rawToChar() %>%
-  fromJSON()
-
-response_list %>%
-  resp_body_raw() %>%
-  fromJSON()
+# write_rds(imdb_tomatoes, "./data/imdb_tomatoes.rds")
+imdb_tomatoes <- read_rds("./data/imdb_tomatoes.rds")
 ```
+
 
 ## Analysis
 All genres
 ```{r}
+# Unique genres
 imdb_genres <- imdb_tomatoes %>%
   pull(genres) %>%
   unlist() %>%
   unique()
 
 imdb_genres
+
+# Count of genres
+imdb_tomatoes %>%
+  unnest_longer(genres) %>%
+  count(genres) %>%
+  arrange(desc(n))
 ```
 
-
-```{r}
+### Plotting
+```{r, fig.width=5, fig.height=4}
 genres_long <- imdb_tomatoes %>%
-  select(- tconst, -primaryTitle, -averageRating, -runtimeMinutes, -numVotes, -startYear) %>%
+  select(- tconst, -primaryTitle, -averageRating, -runtimeMinutes, -numVotes) %>%
   mutate(tomatoes_diff = tomatoes - tomatoesaudience) %>%
   unnest_longer(col = genres) %>%
   filter(!is.na(tomatoes_diff)) %>%
-  mutate(genres = factor(genres),
-         genres = fct_reorder(genres, tomatoes_diff, mean)) %>%
+  mutate(genres = fct(genres)) %>%
   left_join(imdb_tomatoes %>%
               select(genres) %>%
               unnest_longer(col = genres) %>%
               count(genres),
-            by = "genres") %>%
-  filter(n > 10)
+            by = "genres")
 
 genres_long %>%
-  ggplot(aes(x = tomatoes_diff, y = genres, color = genres, group = genres))+
-  #geom_point(alpha = .4)+
-  geom_boxplot()+
+  filter(n > 500) %>%
+  mutate(genres = fct_reorder(genres, tomatoes_diff, median),
+         genres_n = paste0(genres, " \n (", n, ")") %>% 
+           fct(.) %>% 
+           fct_reorder(tomatoes_diff, median)) %>%
+  ggplot(aes(x = tomatoes_diff, y = genres_n, color = genres, group = genres))+
+  #geom_point(alpha = .01)+
+  geom_boxplot(outliers = FALSE)+
   theme_bw()+
   theme(legend.position = "none")+
-  labs(y = "Genre", x = "Tomatoes Difference = Tomatoers - Audience",
-       subtitle = "Positive x: Tomatoers liked movie more than audience.")
+  labs(y = "Genre", x = "Tomatoes Difference = Critics - Audience")
 ```
 
-Regression
+```{r, fig.width=5, fig.height=4}
+imdb_tomatoes %>%
+  select(Critics = tomatoes, Audience = tomatoesaudience) %>%
+  drop_na() %>%
+  pivot_longer(cols = everything()) %>%
+  ggplot(aes(x = value, color = name, fill = name))+
+  geom_density(alpha = .5)+
+  theme_bw()+
+  theme(legend.title = element_blank(),
+        legend.position = c(0.15, 0.9),
+        legend.background = element_blank())+
+  labs(x = "Score", y = element_blank())
+```
+
+
+```{r, fig.width=5, fig.height=4}
+imdb_tomatoes %>%
+  select(startYear, Critics = tomatoes, Audience = tomatoesaudience) %>%
+  filter(startYear < 2024) %>%
+  summarise(Critics = mean(Critics, na.rm = TRUE),
+            Audience = mean(Audience, na.rm = TRUE),
+            .by = startYear) %>%
+  pivot_longer(cols = -startYear) %>%
+  ggplot(aes(x = startYear, y = value, color = name))+
+  geom_line()+
+  theme_bw()+
+  theme(legend.title = element_blank(),
+        legend.position = "top",
+        legend.background = element_blank())+
+  labs(x = "Year", y = "Mean Score")
+
+genres_long %>%
+  filter(n > 1500,
+         startYear < 2024) %>%
+  group_by(startYear, genres) %>%
+  summarise(score = mean(tomatoesaudience, na.rm = TRUE), .groups = "drop") %>%
+  ggplot(aes(x = startYear, y = score, color = genres))+
+  geom_line()+
+  theme_bw()+
+  theme(legend.title = element_blank(),
+        legend.position = "top",
+        legend.background = element_blank())+
+  labs(x = "Year", y = "Audience Score")
+```
+
+
+### Regression
 ```{r}
 genres_long %>%
+  filter(n > 1000) %>%
+  #distinct(genres)
   lm(tomatoes_diff ~ genres, data = .) %>%
   summary()
 ```

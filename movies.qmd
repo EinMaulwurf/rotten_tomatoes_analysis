@@ -129,7 +129,7 @@ for(i in 1:length(imdb_ids)) {
     req_perform()
 }
 
-#write_rds(response_list, "./data/response_list.rds")
+# write_rds(response_list, "./data/response_list.rds", compress = "gz")
 ```
 
 ### Extract data from response_list

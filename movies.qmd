@@ -9,13 +9,15 @@ library(tidyverse)
 library(vroom)
 
 library(progress)
-library(httr)
+library(httr2)
 library(jsonlite)
 
 readRenviron(".env")
-api_key <- Sys.getenv("api_key_2")
+api_key <- Sys.getenv("api_key")
 
 base_url <- "https://mdblist.com/api/?"
+
+options(max.print=50)
 ```
 
 Getting data from 
@@ -47,21 +49,24 @@ imdb_id <- "tt0073195"
 full_url <- paste0(base_url, "apikey=", api_key, "&i=", imdb_id)
 
 # Make the GET request
-response <- GET(full_url)
+response <- request(full_url) %>%
+    req_retry(max_tries = 3) %>%
+    req_perform()
 
 # Parse the JSON response
-data <- fromJSON(rawToChar(response$content))
+data <- response %>%
+  resp_body_raw() %>%
+  rawToChar() %>%
+  fromJSON()
 
 # Print the data
-#print(data)
+# print(data)
 
 # Get rating diffence
 data$ratings %>%
   filter(source %in% c("tomatoes", "tomatoesaudience")) %>%
   select(source, value) %>%
   pivot_wider(names_from = source, values_from = value)
-
-# Get other attributes
 ```
 
 ## Get list of movies to check
@@ -90,9 +95,7 @@ imdb_filtered <- read_rds("./data/imdb_filtered.rds")
 
 
 ## API requests
-
-Error may occur:
-
+Error may occur when too many requests were done:
 ```
 > print(data)
 $response
@@ -101,76 +104,13 @@ $response
 $error
 [1] "API Limit Reached!"
 ```
-
 ```{r}
-set.seed(123)
 imdb_tomatoes <- imdb_filtered %>%
   mutate(tomatoes = -1,
-         tomatoesaudience = -1)# %>%
-  #slice_sample(n = 5)
-
-imdb_ids <- imdb_tomatoes %>% pull(tconst)
-
-# Setting up progress bar
-pb <- progress_bar$new(format = "(:spin) [:bar] :percent [Elapsed time: :elapsedfull || ETA: :eta]",
-                       total = length(imdb_ids),
-                       clear = FALSE)
-
-for(i in 1:length(imdb_ids)) {
-  pb$tick()
-  
-  id <- imdb_ids[i]
-  full_url <- paste0(base_url, "apikey=", api_key, "&i=", id)
-  
-  repeat{
-    # Make the GET request
-    try(
-      response <- RETRY("GET", full_url)
-    )
-    
-    # Parse the JSON response
-    data <- fromJSON(rawToChar(response$content))
-    
-    # Check if request was correct
-    if(data$response){
-      break
-    } else {
-      Sys.sleep(60)
-    }
-  }
-
-  # Print the data
-  #print(data)
-  
-  # Get rating values
-  try({
-    imdb_tomatoes$tomatoes[i] <- data$ratings %>%
-      filter(source == "tomatoes") %>%
-      pull(value)
-    
-    imdb_tomatoes$tomatoesaudience[i] <- data$ratings %>%
-      filter(source == "tomatoesaudience") %>%
-      pull(value)
-  }, silent = FALSE)
-
-}
-
-imdb_tomatoes
-
-# write_rds(imdb_tomatoes, "./data/imdb_tomatoes.rds")
-# imdb_tomatoes <- read_rds("./data/imdb_tomatoes.rds")
-```
-
-```{r}
-set.seed(123)
-imdb_tomatoes <- imdb_filtered %>%
-  mutate(tomatoes = -1,
-         tomatoesaudience = -1) %>%
-  slice_sample(n = 1000)
+         tomatoesaudience = -1)
 
 imdb_ids <- imdb_tomatoes %>% pull(tconst)
 response_list <- list()
-data_list <- list()
 
 # Setting up progress bar
 pb <- progress_bar$new(format = "(:spin) [:bar] :percent [Elapsed time: :elapsedfull || ETA: :eta]",
@@ -184,25 +124,22 @@ for(i in 1:length(imdb_ids)) {
   full_url <- paste0(base_url, "apikey=", api_key, "&i=", id)
   
   # Make the GET request
-  repeat{
-    response_list[[i]] <- RETRY("GET", full_url)
-    data_list[[i]] <- fromJSON(rawToChar(responses[[i]]$content))
-    
-    if(data_list[[i]]$response){
-      break
-    } else {
-      print("Rate Limit")
-      Sys.sleep(60)
-    }
-  }
+  response_list[[i]] <- request(full_url) %>%
+    req_retry(max_tries = 3) %>%
+    req_perform()
 }
+
+#write_rds(response_list, "./data/response_list.rds")
 ```
 
+### Extract data from response_list
+Loop appraoch
 ```{r}
-imdb_tomatoes
-
 for(i in 1:length(imdb_ids)) {
-  data <- fromJSON(rawToChar(responses[[i]]$content))
+  data <- response_list[[i]] %>%
+    resp_body_raw() %>%
+    rawToChar() %>%
+    fromJSON()
   
   try({
     imdb_tomatoes$tomatoes[i] <- data$ratings %>%
@@ -212,40 +149,36 @@ for(i in 1:length(imdb_ids)) {
     imdb_tomatoes$tomatoesaudience[i] <- data$ratings %>%
       filter(source == "tomatoesaudience") %>%
       pull(value)
-  }, silent = FALSE)
+  })
 }
+```
 
-imdb_tomatoes
+Tidyverse / purrr approach
+```{r}
+converted_data <- response_list %>%
+  map(~ .x %>%
+        resp_body_raw() %>%
+        rawToChar() %>%
+        fromJSON()) %>%
+  keep(~ .x$response == TRUE)
+
+converted_data
 ```
 
 
 ```{r}
 responses[[1]]$content
 
-fromJSON(rawToChar(responses[[1]]$content))$ratings
-```
+fromJSON(rawToChar(response_list[[1]]$content))$ratings
 
+response_list[[1]] %>%
+  resp_body_raw() %>%
+  rawToChar() %>%
+  fromJSON()
 
-```{r}
-full_url <- paste0(base_url, "apikey=", api_key, "&i=", "tt15239678")
-
-# Make the GET request
-#response <- GET(full_url)
-response <- RETRY("GET", full_url)
-
-# Parse the JSON response
-data <- fromJSON(rawToChar(response$content))
-
-# Print the data
-print(data)
-
-data$ratings %>%
-    filter(source == "tomatoes") %>%
-    pull(value)
-
-data$ratings %>%
-    filter(source == "tomatoesaudience") %>%
-    pull(value)
+response_list %>%
+  resp_body_raw() %>%
+  fromJSON()
 ```
 
 ## Analysis
@@ -261,7 +194,7 @@ imdb_genres
 
 
 ```{r}
-test <- imdb_tomatoes %>%
+genres_long <- imdb_tomatoes %>%
   select(- tconst, -primaryTitle, -averageRating, -runtimeMinutes, -numVotes, -startYear) %>%
   mutate(tomatoes_diff = tomatoes - tomatoesaudience) %>%
   unnest_longer(col = genres) %>%
@@ -275,11 +208,7 @@ test <- imdb_tomatoes %>%
             by = "genres") %>%
   filter(n > 10)
 
-test %>%
-  lm(tomatoes_diff ~ genres, data = .) %>%
-  summary()
-
-test %>%
+genres_long %>%
   ggplot(aes(x = tomatoes_diff, y = genres, color = genres, group = genres))+
   #geom_point(alpha = .4)+
   geom_boxplot()+
@@ -287,5 +216,12 @@ test %>%
   theme(legend.position = "none")+
   labs(y = "Genre", x = "Tomatoes Difference = Tomatoers - Audience",
        subtitle = "Positive x: Tomatoers liked movie more than audience.")
+```
+
+Regression
+```{r}
+genres_long %>%
+  lm(tomatoes_diff ~ genres, data = .) %>%
+  summary()
 ```
 

@@ -71,12 +71,13 @@ data$ratings %>%
 
 ## Get list of movies to check
 ```{r}
-imdb_raw <- vroom("/Users/sebastiangeis/Downloads/title.basics.tsv", delim = "\t", na = "\\N") 
-imdb_ratings <- vroom("/Users/sebastiangeis/Downloads/title.ratings.tsv", delim = "\t", na = "\\N")
+imdb_raw <- vroom("./data/title.basics.tsv", delim = "\t", na = "\\N") 
+imdb_ratings <- vroom("./data/title.ratings.tsv", delim = "\t", na = "\\N")
 
 imdb_filtered <- imdb_raw %>%
   filter(titleType == "movie",
-         as.numeric(startYear) > 2000,
+         as.numeric(startYear) >= 1980,
+         as.numeric(startYear) < 2024,
          !is.na(runtimeMinutes)) %>%
   left_join(imdb_ratings, by = "tconst") %>%
   filter(numVotes > 10000) %>%
@@ -84,6 +85,16 @@ imdb_filtered <- imdb_raw %>%
   select(-endYear, -titleType, -isAdult)
 
 imdb_filtered
+
+imdb_filtered %>%
+  pull(numVotes) %>%
+  quantile(probs = seq(0.1, 0.9, by = 0.1))
+
+imdb_filtered %>%
+  group_by(startYear) %>%
+  count() %>%
+  ggplot(aes(x = startYear, y = n))+
+  geom_line()
 ```
 
 Save to .rds / read from .rds
@@ -104,32 +115,33 @@ $response
 $error
 [1] "API Limit Reached!"
 ```
+
+Using loop
 ```{r}
 imdb_tomatoes <- imdb_filtered %>%
   mutate(tomatoes = -1,
          tomatoesaudience = -1)
 
 imdb_ids <- imdb_tomatoes %>% pull(tconst)
+full_urls <- paste0(base_url, "apikey=", api_key, "&i=", imdb_ids)
+
 response_list <- list()
 
 # Setting up progress bar
-pb <- progress_bar$new(format = "(:spin) [:bar] :percent [Elapsed time: :elapsedfull || ETA: :eta]",
-                       total = length(imdb_ids),
+pb <- progress_bar$new(format = "(:spin) :percent [:current/:total || Time: :elapsedfull || ETA: :eta]",
+                       total = length(full_urls),
                        clear = FALSE)
 
-for(i in 1:length(imdb_ids)) {
+for(i in 1:length(full_urls)) {
   pb$tick()
   
-  id <- imdb_ids[i]
-  full_url <- paste0(base_url, "apikey=", api_key, "&i=", id)
-  
   # Make the GET request
-  response_list[[i]] <- request(full_url) %>%
+  response_list[[i]] <- request(full_urls[i]) %>%
     req_retry(max_tries = 3) %>%
     req_perform()
 }
 
-# write_rds(response_list, "./data/response_list.rds", compress = "gz")
+#write_rds(response_list, "./data/response_list.rds", compress = "gz")
 ```
 
 ### Extract data from response_list
@@ -199,6 +211,7 @@ imdb_tomatoes %>%
 ```
 
 ### Plotting
+Boxplot
 ```{r, fig.width=5, fig.height=4}
 genres_long <- imdb_tomatoes %>%
   select(- tconst, -primaryTitle, -averageRating, -runtimeMinutes, -numVotes) %>%
@@ -213,19 +226,24 @@ genres_long <- imdb_tomatoes %>%
             by = "genres")
 
 genres_long %>%
-  filter(n > 500) %>%
+  filter(n > 1000) %>%
   mutate(genres = fct_reorder(genres, tomatoes_diff, median),
-         genres_n = paste0(genres, " \n (", n, ")") %>% 
+         genres_n = paste0(genres, " \n (n=", n, ")") %>% 
            fct(.) %>% 
            fct_reorder(tomatoes_diff, median)) %>%
   ggplot(aes(x = tomatoes_diff, y = genres_n, color = genres, group = genres))+
   #geom_point(alpha = .01)+
   geom_boxplot(outliers = FALSE)+
   theme_bw()+
-  theme(legend.position = "none")+
-  labs(y = "Genre", x = "Tomatoes Difference = Critics - Audience")
+  theme(legend.position = "none",
+        plot.title = element_text(hjust = 0.5))+
+  labs(y = "Genre", x = "Score Difference = Critics - Audience",
+       title = "Rotten Tomatoes rating difference by movie genre")
+
+ggsave("./plots/rt_genre_boxplot.png", width = 5, height = 4)
 ```
 
+Density
 ```{r, fig.width=5, fig.height=4}
 imdb_tomatoes %>%
   select(Critics = tomatoes, Audience = tomatoesaudience) %>%
@@ -235,16 +253,19 @@ imdb_tomatoes %>%
   geom_density(alpha = .5)+
   theme_bw()+
   theme(legend.title = element_blank(),
-        legend.position = c(0.15, 0.9),
-        legend.background = element_blank())+
-  labs(x = "Score", y = element_blank())
+        legend.position = "top",
+        legend.background = element_blank(),
+        plot.title = element_text(hjust = 0.5))+
+  labs(x = "Score", y = element_blank(),
+       title = "Rotten Tomatoes rating distributions")
+
+ggsave("./plots/rt_rating_distribution.png", width = 5, height = 4)
 ```
 
-
+Score over the years
 ```{r, fig.width=5, fig.height=4}
 imdb_tomatoes %>%
   select(startYear, Critics = tomatoes, Audience = tomatoesaudience) %>%
-  filter(startYear < 2024) %>%
   summarise(Critics = mean(Critics, na.rm = TRUE),
             Audience = mean(Audience, na.rm = TRUE),
             .by = startYear) %>%
@@ -254,12 +275,17 @@ imdb_tomatoes %>%
   theme_bw()+
   theme(legend.title = element_blank(),
         legend.position = "top",
-        legend.background = element_blank())+
-  labs(x = "Year", y = "Mean Score")
+        legend.background = element_blank(),
+        plot.title = element_text(hjust = 0.5))+
+  labs(x = "Year", y = "Mean Score",
+       title = "Rotten Tomatoes ratings over time")
 
+ggsave("./plots/rt_ratings_over_time.png", width = 5, height = 4)
+```
+
+```{r, fig.width=5, fig.height=4}
 genres_long %>%
-  filter(n > 1500,
-         startYear < 2024) %>%
+  filter(n > 2000) %>%
   group_by(startYear, genres) %>%
   summarise(score = mean(tomatoesaudience, na.rm = TRUE), .groups = "drop") %>%
   ggplot(aes(x = startYear, y = score, color = genres))+
@@ -267,17 +293,68 @@ genres_long %>%
   theme_bw()+
   theme(legend.title = element_blank(),
         legend.position = "top",
-        legend.background = element_blank())+
-  labs(x = "Year", y = "Audience Score")
+        legend.background = element_blank(),
+        plot.title = element_text(hjust = 0.5))+
+  labs(x = "Year", y = "Audience Score",
+       title = "Rotten Tomatoes ratings over time by genre")
+
+ggsave("./plots/rt_genre_ratings_over_time.png", width = 5, height = 4)
 ```
 
+Difference Rotten Tomatoes and IMDB
+```{r, fig.width=5, fig.height=4}
+imdb_tomatoes %>%
+  select(year = startYear, IMDB = averageRating, RT = tomatoesaudience) %>%
+  drop_na() %>%
+  mutate(RT = RT / 10) %>%
+  pivot_longer(cols = -year) %>%
+  ggplot(aes(x = value, color = name, fill = name))+
+  geom_density(alpha = .5)+
+  theme_bw()+
+  theme(legend.title = element_blank(),
+        legend.position = "top",
+        legend.background = element_blank(),
+        plot.title = element_text(hjust = 0.5))+
+  labs(x = "Score", y = element_blank(),
+       title = "Rating distribution: IMDB vs Rotten Tomatoes*",
+       caption = "* RT score divided by 10")
+
+ggsave("./plots/imdb_rt_rating_distribution.png", width = 5, height = 4)
+```
+
+```{r, fig.width=5, fig.height=4}
+imdb_tomatoes %>%
+  select(year = startYear, IMDB = averageRating, RT = tomatoesaudience) %>%
+  drop_na() %>%
+  mutate(RT = RT / 10) %>%
+  pivot_longer(cols = -year) %>%
+  summarise(value = mean(value), .by = c(year, name)) %>%
+  ggplot(aes(x = year, y = value, color = name))+
+  geom_line()+
+  theme_bw()+
+  theme(legend.position = "top",
+        plot.title = element_text(hjust = 0.5))+
+  labs(x = "Year", y = "Score", color = "",
+       title = "Ratings over time: IMDB vs Rotten Tomatoes*",
+       caption = "* RT score divided by 10")
+
+ggsave("./plots/imdb_rt_ratings_over_time.png", width = 5, height = 4)
+```
 
 ### Regression
 ```{r}
-genres_long %>%
-  filter(n > 1000) %>%
-  #distinct(genres)
-  lm(tomatoes_diff ~ genres, data = .) %>%
-  summary()
+reg1 <- genres_long %>%
+  filter(n > 2000) %>%
+  lm(tomatoes_diff ~ genres, data = .)
+
+library(stargazer)
+library(webshot)
+
+stargazer(reg1, type = "text",
+          omit.stat = c("ser", "f"), 
+          single.row = FALSE, 
+          intercept.bottom = FALSE,
+          no.space = TRUE)
+
 ```
 

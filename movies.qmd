@@ -17,7 +17,7 @@ api_key <- Sys.getenv("api_key")
 
 base_url <- "https://mdblist.com/api/?"
 
-options(max.print=50)
+options(max.print=500)
 ```
 
 Getting data from 
@@ -399,13 +399,25 @@ imdb_tomatoes %>%
 Reddit Comment request: List of movies with large difference between critics and audience.
 ```{r}
 imdb_tomatoes %>%
-  select(imdb_id = tconst, title = primaryTitle, year = startYear, imdb_votes = numVotes, critics = tomatoes, audience = tomatoesaudience) %>%
+  select(imdb_id, title = primaryTitle, year = startYear, imdb_votes = numVotes, critics = tomatoes_critics, audience = tomatoes_audience) %>%
   mutate(tomatoes_diff = critics - audience) %>%
   drop_na() %>%
-  filter(imdb_votes > 50000) %>%
+  filter(imdb_votes > 20000) %>%
   arrange(desc(abs(tomatoes_diff))) %>%
   head(500) %>%
   select(-imdb_votes) %>%
-  mutate(title = str_trunc(title, width = 30, side = "right")) %>%
+  mutate(title = str_trunc(title, width = 30, side = "right"),
+         title = str_replace_all(title, "&", "and")) %>%
   stargazer(type = "text", summary = FALSE)
 ```
+
+```{r}
+imdb_tomatoes %>%
+  select(imdb_id, title = primaryTitle, year = startYear, imdb_votes = numVotes, critics = tomatoes_critics, audience = tomatoes_audience) %>%
+  mutate(tomatoes_diff = critics - audience,
+         tomatoes_diff_abs = abs(tomatoes_diff)) %>%
+  drop_na() %>%
+  filter(tomatoes_diff_abs > 50) %>%
+  arrange(desc(imdb_votes))
+```
+

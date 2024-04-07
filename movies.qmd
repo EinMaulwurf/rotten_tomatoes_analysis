@@ -246,7 +246,7 @@ ggsave("./plots/rt_genre_boxplot.png", width = 5, height = 4)
 Density
 ```{r, fig.width=5, fig.height=4}
 imdb_tomatoes %>%
-  select(Critics = tomatoes, Audience = tomatoesaudience) %>%
+  select(Critics = tomatoes_critics, Audience = tomatoes_audience) %>%
   drop_na() %>%
   pivot_longer(cols = everything()) %>%
   ggplot(aes(x = value, color = name, fill = name))+
@@ -265,7 +265,7 @@ ggsave("./plots/rt_rating_distribution.png", width = 5, height = 4)
 Score over the years
 ```{r, fig.width=5, fig.height=4}
 imdb_tomatoes %>%
-  select(startYear, Critics = tomatoes, Audience = tomatoesaudience) %>%
+  select(startYear, Critics = tomatoes_critics, Audience = tomatoes_audience) %>%
   summarise(Critics = mean(Critics, na.rm = TRUE),
             Audience = mean(Audience, na.rm = TRUE),
             .by = startYear) %>%
@@ -287,7 +287,7 @@ ggsave("./plots/rt_ratings_over_time.png", width = 5, height = 4)
 genres_long %>%
   filter(n > 2000) %>%
   group_by(startYear, genres) %>%
-  summarise(score = mean(tomatoesaudience, na.rm = TRUE), .groups = "drop") %>%
+  summarise(score = mean(tomatoes_audience, na.rm = TRUE), .groups = "drop") %>%
   ggplot(aes(x = startYear, y = score, color = genres))+
   geom_line()+
   theme_bw()+
@@ -304,7 +304,7 @@ ggsave("./plots/rt_genre_ratings_over_time.png", width = 5, height = 4)
 Difference Rotten Tomatoes and IMDB
 ```{r, fig.width=5, fig.height=4}
 imdb_tomatoes %>%
-  select(year = startYear, IMDB = averageRating, RT = tomatoesaudience) %>%
+  select(year = startYear, IMDB = averageRating, RT = tomatoes_audience) %>%
   drop_na() %>%
   mutate(RT = RT / 10) %>%
   pivot_longer(cols = -year) %>%
@@ -324,7 +324,7 @@ ggsave("./plots/imdb_rt_rating_distribution.png", width = 5, height = 4)
 
 ```{r, fig.width=5, fig.height=4}
 imdb_tomatoes %>%
-  select(year = startYear, IMDB = averageRating, RT = tomatoesaudience) %>%
+  select(year = startYear, IMDB = averageRating, RT = tomatoes_audience) %>%
   drop_na() %>%
   mutate(RT = RT / 10) %>%
   pivot_longer(cols = -year) %>%

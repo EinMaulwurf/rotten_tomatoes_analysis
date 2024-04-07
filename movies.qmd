@@ -17,7 +17,7 @@ api_key <- Sys.getenv("api_key")
 
 base_url <- "https://mdblist.com/api/?"
 
-options(max.print=50)
+options(max.print=500)
 ```
 
 Getting data from 
@@ -378,8 +378,7 @@ imdb_tomatoes %>%
   theme(legend.position = "none")
 ```
 
-
-### Other
+## Reddit Post
 A few days ago I came across the Rotten Tomatoes score for the new (Godzilla x Kong movie)[https://www.rottentomatoes.com/m/godzilla_x_kong_the_new_empire] and was intrigued by the large discrepancy between the critics' score (54%) and the audience score (92%). 
 
 I took a list of films from the (IMDb Non-Commercial Datasets)[https://developer.imdb.com/non-commercial-datasets/], filtered to include only films from the 1980s and later, and with at least 10,000 reviews. This gave me a dataset of about 10,000 movies. I then used the [mdblist](mdblist.com) API to get the Rotten Tomatoes score for each film.  I then used R and the tidyverse packages to create the plots.
@@ -389,11 +388,26 @@ I took a list of films from the (IMDb Non-Commercial Datasets)[https://developer
 [3] Ratings over time: Films seem to have gotten better since around 2010. There is also a fairly large gap between audience and critics' scores in the 90s and 00s.
 [4] Ratings over time by genre: The audience ratings for the four most popular genres show that drama is always at the top. The difference between the genres seems to be decreasing over time.
 
+## Other
 ```{r}
 imdb_tomatoes %>%
   select(title = primaryTitle, year = startYear, votes = numVotes, rating = tomatoesaudience) %>%
   filter(votes > 50000) %>%
   drop_na() %>%
   arrange(desc(rating), desc(votes))
+```
+
+Reddit Comment request: List of movies with large difference between critics and audience.
+```{r}
+imdb_tomatoes %>%
+  select(imdb_id = tconst, title = primaryTitle, year = startYear, imdb_votes = numVotes, critics = tomatoes, audience = tomatoesaudience) %>%
+  mutate(tomatoes_diff = critics - audience) %>%
+  drop_na() %>%
+  filter(imdb_votes > 50000) %>%
+  arrange(desc(abs(tomatoes_diff))) %>%
+  head(500) %>%
+  select(-imdb_votes) %>%
+  mutate(title = str_trunc(title, width = 30, side = "right")) %>%
+  stargazer(type = "text", summary = FALSE)
 ```
 

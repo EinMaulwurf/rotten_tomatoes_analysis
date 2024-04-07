@@ -17,7 +17,7 @@ api_key <- Sys.getenv("api_key")
 
 base_url <- "https://mdblist.com/api/?"
 
-options(max.print=500)
+options(max.print=50)
 ```
 
 Getting data from 
@@ -120,7 +120,8 @@ $error
 Using loop
 ```{r}
 imdb_tomatoes <- imdb_filtered %>%
-  mutate(tomatoes = -1,
+  mutate(rating = "NR",
+         tomatoes = -1,
          tomatoesaudience = -1)
 
 imdb_ids <- imdb_tomatoes %>% pull(tconst)
@@ -145,10 +146,15 @@ for(i in 1:length(full_urls)) {
 #write_rds(response_list, "./data/response_list.rds", compress = "gz")
 ```
 
+```{r}
+response_list <- read_rds("./data/response_list.rds")
+```
+
+
 ### Extract data from response_list
 Loop appraoch
 ```{r}
-for(i in 1:length(imdb_ids)) {
+for(i in 1:length(response_list)) {
   data <- response_list[[i]] %>%
     resp_body_raw() %>%
     rawToChar() %>%
@@ -162,6 +168,8 @@ for(i in 1:length(imdb_ids)) {
     imdb_tomatoes$tomatoesaudience[i] <- data$ratings %>%
       filter(source == "tomatoesaudience") %>%
       pull(value)
+    
+    imdb_tomatoes$rating[i] <- data$certification
   })
 }
 ```
@@ -185,6 +193,9 @@ extract_rating <- possibly(function(x, filter_source) {
 
 imdb_tomatoes$tomatoes <- map_dbl(converted_data, extract_rating, filter_source = "tomatoes")
 imdb_tomatoes$tomatoesaudience <- map_dbl(converted_data, extract_rating, filter_source = "tomatoesaudience")
+
+# Need to add extraction of age rating
+# …
 ```
 
 ```{r}
@@ -410,4 +421,48 @@ imdb_tomatoes %>%
   mutate(title = str_trunc(title, width = 30, side = "right")) %>%
   stargazer(type = "text", summary = FALSE)
 ```
+
+```{r}
+imdb_raw <- vroom("./data/title.basics.tsv", delim = "\t", na = "\\N") 
+imdb_ratings <- vroom("./data/title.ratings.tsv", delim = "\t", na = "\\N")
+
+imdb_raw %>%
+  filter(titleType == "movie",
+         as.numeric(startYear) >= 1980,
+         as.numeric(startYear) < 2024,
+         !is.na(runtimeMinutes)) %>%
+  left_join(imdb_ratings, by = "tconst") %>%
+  filter(numVotes > 10000) %>%
+  mutate(genres = str_split(genres, ",")) %>%
+  select(-endYear, -titleType, -isAdult)
+```
+
+```{r}
+imdb_raw %>%
+  filter(titleType == "movie") %>%
+  filter(isAdult == 1) %>%
+  arrange(desc(startYear))
+```
+
+Test extraction of age rating using purrr
+```{r}
+response_list[[1]]
+
+converted_data[[8187]]$age_rating
+
+age_ratings <- converted_data %>%
+  purrr::map(~.x$certification)
+
+age_ratings %>% length()
+
+age_ratings %>% unlist() %>% length()
+
+test_fun <- safely(function(x) {
+  x$certification
+}, otherwise = "error")
+
+test <- converted_data %>%
+  purrr::map_chr(test_fun)
+```
+
 

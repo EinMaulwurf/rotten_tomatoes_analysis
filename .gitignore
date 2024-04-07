@@ -1,5 +1,6 @@
 .env
 *.tsv
+*.tsv.gz
 
 # History files
 .Rhistory

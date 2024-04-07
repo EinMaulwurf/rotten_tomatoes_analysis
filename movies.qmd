@@ -1,5 +1,5 @@
 ---
-title: "movies"
+title: "Rotten Tomatoes and IMDB analysis"
 format: html
 ---
 
@@ -7,6 +7,7 @@ format: html
 ```{r, message=FALSE}
 library(tidyverse)
 library(vroom)
+library(stargazer)
 
 library(progress)
 library(httr2)
@@ -17,14 +18,10 @@ api_key <- Sys.getenv("api_key")
 
 base_url <- "https://mdblist.com/api/?"
 
-options(max.print=500)
+options(max.print=50)
 ```
 
-Getting data from 
-
-[mdblist](mdblist.com)
-
-Limits
+Check mdblist limits
 ```{r}
 # API endpoint for checking limits
 url <- "https://mdblist.com/api/user/?apikey=fbi8aymrfprksp7xxna0s28dw"
@@ -39,8 +36,8 @@ limits <- fromJSON(rawToChar(response$content))
 print(limits)
 ```
 
-
-## Example: Get info on jaws movie, IMDB id: tt0073195
+## Example: Get info on specific movie
+Jaws (1975), IMDB id: tt0073195
 https://mdblist.com/api/?apikey=fbi8aymrfprksp7xxna0s28dw&i=tt0073195
 ```{r}
 # Define the URL
@@ -72,8 +69,13 @@ data$ratings %>%
 ## Get list of movies to check
 From (IMDb Non-Commercial Datasets)[https://developer.imdb.com/non-commercial-datasets/]
 ```{r}
-imdb_raw <- vroom("./data/title.basics.tsv", delim = "\t", na = "\\N") 
-imdb_ratings <- vroom("./data/title.ratings.tsv", delim = "\t", na = "\\N")
+download.file("https://datasets.imdbws.com/title.basics.tsv.gz", "./data/title.basics.tsv.gz")
+download.file("https://datasets.imdbws.com/title.ratings.tsv.gz", "./data/title.ratings.tsv.gz")
+```
+
+```{r}
+imdb_raw <- vroom("./data/title.basics.tsv.gz", delim = "\t", na = "\\N") 
+imdb_ratings <- vroom("./data/title.ratings.tsv.gz", delim = "\t", na = "\\N")
 
 imdb_filtered <- imdb_raw %>%
   filter(titleType == "movie",
@@ -101,10 +103,8 @@ imdb_filtered %>%
 Save to .rds / read from .rds
 ```{r}
 # write_rds(imdb_filtered, "./data/imdb_filtered.rds")
-
 imdb_filtered <- read_rds("./data/imdb_filtered.rds")
 ```
-
 
 ## API requests
 Error may occur when too many requests were done:

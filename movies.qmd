@@ -70,6 +70,7 @@ data$ratings %>%
 ```
 
 ## Get list of movies to check
+From (IMDb Non-Commercial Datasets)[https://developer.imdb.com/non-commercial-datasets/]
 ```{r}
 imdb_raw <- vroom("./data/title.basics.tsv", delim = "\t", na = "\\N") 
 imdb_ratings <- vroom("./data/title.ratings.tsv", delim = "\t", na = "\\N")
@@ -356,5 +357,43 @@ stargazer(reg1, type = "text",
           intercept.bottom = FALSE,
           no.space = TRUE)
 
+```
+
+```{r}
+imdb_tomatoes %>%
+  select(title = primaryTitle, year = startYear, votes = numVotes, rating = tomatoesaudience) %>%
+  #filter(votes > 50000) %>%
+  drop_na() %>%
+  lm(rating ~ votes, data = .) %>%
+  summary()
+
+imdb_tomatoes %>%
+  select(title = primaryTitle, year = startYear, votes = numVotes, rating = tomatoesaudience) %>%
+  #filter(votes > 50000) %>%
+  drop_na() %>%
+  ggplot(aes(x = votes, y = rating))+
+  geom_density_2d_filled()+
+  scale_x_log10()+
+  theme_bw()+
+  theme(legend.position = "none")
+```
+
+
+### Other
+A few days ago I came across the Rotten Tomatoes score for the new (Godzilla x Kong movie)[https://www.rottentomatoes.com/m/godzilla_x_kong_the_new_empire] and was intrigued by the large discrepancy between the critics' score (54%) and the audience score (92%). 
+
+I took a list of films from the (IMDb Non-Commercial Datasets)[https://developer.imdb.com/non-commercial-datasets/], filtered to include only films from the 1980s and later, and with at least 10,000 reviews. This gave me a dataset of about 10,000 movies. I then used the [mdblist](mdblist.com) API to get the Rotten Tomatoes score for each film.  I then used R and the tidyverse packages to create the plots.
+
+[1] Rating difference by genre: Critics seem to love horror movies, while audiences like action movies more. Maybe audiences like some stupid but funny movies that critics don't (like the Godzilla x Kong movie).
+[2] Distribution of Rating Difference: Critics' scores have a wider spread. Audiences do not give bad reviews as often. Maybe a bad film just isn't worth giving a rating to.
+[3] Ratings over time: Films seem to have gotten better since around 2010. There is also a fairly large gap between audience and critics' scores in the 90s and 00s.
+[4] Ratings over time by genre: The audience ratings for the four most popular genres show that drama is always at the top. The difference between the genres seems to be decreasing over time.
+
+```{r}
+imdb_tomatoes %>%
+  select(title = primaryTitle, year = startYear, votes = numVotes, rating = tomatoesaudience) %>%
+  filter(votes > 50000) %>%
+  drop_na() %>%
+  arrange(desc(rating), desc(votes))
 ```
 

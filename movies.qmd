@@ -142,14 +142,13 @@ for(i in 1:length(full_urls)) {
     req_retry(max_tries = 3) %>%
     req_perform()
 }
-
-#write_rds(response_list, "./data/response_list.rds", compress = "gz")
 ```
 
 > Careful! The resulting `response_list` is shorter than it should be!
 > Therefore, matching via the imdb-id is required!
 
 ```{r}
+#write_rds(response_list, "./data/response_list.rds", compress = "gz")
 response_list <- read_rds("./data/response_list.rds")
 ```
 
@@ -419,5 +418,19 @@ imdb_tomatoes %>%
   drop_na() %>%
   filter(tomatoes_diff_abs > 50) %>%
   arrange(desc(imdb_votes))
+```
+
+## Age ratings
+```{r}
+imdb_tomatoes %>%
+  select(rating, tomatoes_audience, tomatoes_critics) %>%
+  mutate(rating = replace_na(rating, "NR")) %>%
+  mutate(rating = fct(rating, levels = c("G", "PG", "PG-13", "R", "NC-17", "NR"))) %>%
+  drop_na() %>%
+  pivot_longer(cols = -rating) %>%
+  ggplot(aes(x = rating, y = value, color = name))+
+  geom_boxplot(outliers = FALSE)+
+  theme_bw()+
+  theme(legend.position = "top")
 ```
 
